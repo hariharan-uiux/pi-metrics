@@ -143,7 +143,7 @@ def main():
 
     cfg = load_config()
     server_port = args.port or cfg.get("server_port", 5055)
-    target_url = "http://localhost:5173" if args.dev else f"http://localhost:{server_port}"
+    target_url = "http://127.0.0.1:5173" if args.dev else f"http://127.0.0.1:{server_port}"
 
     server_proc = None
 
@@ -179,12 +179,14 @@ def main():
 
             # CREATE_NO_WINDOW = 0x08000000 to prevent CMD flash on Windows
             creationflags = 0x08000000 if sys.platform == "win32" else 0
+            log_file = os.path.join(os.environ.get("TEMP", "C:\\Temp"), "pi-metrics-server.log")
+            log_f = open(log_file, "w", encoding="utf-8")
             server_proc = subprocess.Popen(
                 [sys.executable, server_script],
                 cwd=APP_DIR,
                 creationflags=creationflags,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
+                stdout=log_f,
+                stderr=subprocess.STDOUT
             )
 
             try:
@@ -199,6 +201,12 @@ def main():
             while time.time() - start_t < 10.0:
                 if is_server_ready(server_port):
                     ready = True
+                    break
+                if server_proc.poll() is not None:
+                    print(f"[ERROR] Backend server failed to start (exit code {server_proc.returncode}).")
+                    if os.path.exists(log_file):
+                        with open(log_file, "r", encoding="utf-8", errors="ignore") as lf:
+                            print(lf.read())
                     break
                 time.sleep(0.2)
             if not ready:

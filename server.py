@@ -10,6 +10,7 @@ import mimetypes
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -566,6 +567,8 @@ class MetricsRequestHandler(SimpleHTTPRequestHandler):
                 "latency_ms": m.get("latency_ms", 0),
                 "host": poller.config.get("pi_host")
             })
+        elif self.path == '/api/config':
+            self.send_json_response({"ok": True, "config": poller.config})
         elif self.path == '/' or self.path == '/index.html':
             self.path = '/index.html'
             return super().do_GET()
@@ -590,11 +593,77 @@ class MetricsRequestHandler(SimpleHTTPRequestHandler):
                 length = int(self.headers.get('Content-Length', 0))
                 body = self.rfile.read(length)
                 new_cfg = json.loads(body.decode('utf-8'))
-                for k in ['poll_interval_sec', 'pi_host', 'pi_user']:
+                for k in ['poll_interval_sec', 'pi_host', 'pi_user', 'pi_port']:
                     if k in new_cfg:
                         poller.config[k] = new_cfg[k]
                 save_config(poller.config)
+                # Reset details and trigger immediate poll with new IP
+                poller.system_details = None
+                with poller.lock:
+                    poller.latest_metrics["online"] = False
+                    poller.latest_metrics["hostname"] = poller.config.get("pi_host", "raspberrypi")
+                threading.Thread(target=poller.poll_once, daemon=True).start()
                 self.send_json_response({"ok": True, "config": poller.config})
+            except Exception as e:
+                self.send_json_response({"ok": False, "error": str(e)}, status=400)
+        elif self.path == '/api/test_connection':
+            try:
+                length = int(self.headers.get('Content-Length', 0))
+                body = self.rfile.read(length)
+                req = json.loads(body.decode('utf-8'))
+                test_host = req.get('host', '').strip()
+                test_user = req.get('user', 'pi').strip()
+                test_port = int(req.get('port', 22))
+
+                if not test_host:
+                    self.send_json_response({"ok": False, "error": "Host or IP address cannot be empty"}, status=400)
+                    return
+
+                # 1. Quick TCP socket test
+                t0 = time.time()
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(2.5)
+                try:
+                    sock.connect((test_host, test_port))
+                    sock.close()
+                except Exception as sock_err:
+                    self.send_json_response({
+                        "ok": False,
+                        "error": f"Cannot reach {test_host}:{test_port} — {sock_err}"
+                    })
+                    return
+
+                # 2. Quick SSH probe
+                ssh_cmd = [
+                    'ssh', '-p', str(test_port),
+                    '-o', 'BatchMode=yes',
+                    '-o', 'ConnectTimeout=3',
+                    '-o', 'StrictHostKeyChecking=accept-new',
+                    f"{test_user}@{test_host}",
+                    "cat /proc/device-tree/model 2>/dev/null || uname -m"
+                ]
+                try:
+                    out = subprocess.check_output(ssh_cmd, stderr=subprocess.STDOUT, timeout=4.0, text=True)
+                    latency_ms = round((time.time() - t0) * 1000, 1)
+                    clean_lines = [l.strip().replace('\x00', '') for l in out.strip().splitlines() if l.strip() and not l.startswith('Please note') and not l.startswith('See http')]
+                    model_str = clean_lines[-1] if clean_lines else "Raspberry Pi"
+                    self.send_json_response({
+                        "ok": True,
+                        "host": test_host,
+                        "latency_ms": latency_ms,
+                        "model": model_str
+                    })
+                except subprocess.CalledProcessError as cpe:
+                    out_text = cpe.output.strip() if cpe.output else "Authentication failed"
+                    self.send_json_response({
+                        "ok": False,
+                        "error": f"Device responded on port {test_port}, but SSH auth failed ({out_text}). Ensure SSH key is copied (`ssh-copy-id {test_user}@{test_host}`)."
+                    })
+                except Exception as e:
+                    self.send_json_response({
+                        "ok": False,
+                        "error": f"SSH error: {e}"
+                    })
             except Exception as e:
                 self.send_json_response({"ok": False, "error": str(e)}, status=400)
         else:
@@ -620,20 +689,17 @@ def main():
     cfg = load_config()
     poller = PiPoller(cfg)
 
-    # Initial poll
-    print(f"Connecting to Raspberry Pi at {cfg.get('pi_host')}...")
-    poller.poll_once()
+    port = int(cfg.get('server_port', 5055))
+    bind_host = '127.0.0.1' if sys.platform == 'win32' else '0.0.0.0'
+    server = ThreadingHTTPServer((bind_host, port), MetricsRequestHandler)
+    print(f"🚀 Pi Metrics server listening on http://localhost:{port}")
 
-    # Start background polling thread
+    # Start background polling thread (runs first poll in background immediately)
     poll_thread = threading.Thread(target=poller.worker_loop, daemon=True)
     poll_thread.start()
 
     # Pre-fetch system details in background
     threading.Thread(target=poller.fetch_system_details, daemon=True).start()
-
-    port = int(cfg.get('server_port', 5055))
-    server = ThreadingHTTPServer(('0.0.0.0', port), MetricsRequestHandler)
-    print(f"🚀 Pi Metrics server listening on http://localhost:{port}")
 
     try:
         server.serve_forever()

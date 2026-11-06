@@ -20,6 +20,9 @@ import {
   Info,
   ChevronRight,
   ExternalLink,
+  AlertCircle,
+  CheckCircle2,
+  X,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -187,6 +190,41 @@ export default function App() {
   const [copiedSerial, setCopiedSerial] = useState(false)
   const [copiedJson, setCopiedJson] = useState(false)
 
+  // Target Raspberry Pi connection configuration
+  const [config, setConfig] = useState<{ pi_host: string; pi_user: string; pi_port: number }>({
+    pi_host: "192.168.1.9",
+    pi_user: "pi",
+    pi_port: 22,
+  })
+  const [showIpModal, setShowIpModal] = useState<boolean>(false)
+  const [inputHost, setInputHost] = useState<string>("192.168.1.9")
+  const [inputUser, setInputUser] = useState<string>("pi")
+  const [inputPort, setInputPort] = useState<number>(22)
+  const [testStatus, setTestStatus] = useState<{
+    state: "idle" | "testing" | "success" | "error"
+    message?: string
+    latency?: number
+    model?: string
+  }>({ state: "idle" })
+  const [isSavingConfig, setIsSavingConfig] = useState<boolean>(false)
+
+  const fetchConfig = async () => {
+    try {
+      const res = await fetch("/api/config")
+      if (res.ok) {
+        const data = await res.json()
+        if (data.config) {
+          setConfig(data.config)
+          setInputHost(data.config.pi_host || "192.168.1.9")
+          setInputUser(data.config.pi_user || "pi")
+          setInputPort(Number(data.config.pi_port) || 22)
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load config:", e)
+    }
+  }
+
   const fetchMetrics = async () => {
     try {
       const res = await fetch("/api/metrics")
@@ -194,8 +232,11 @@ export default function App() {
       const data = await res.json()
       if (data.metrics) setMetrics(data.metrics)
       if (data.history) setHistory(data.history)
+      if (data.config) setConfig(data.config)
+      return data.metrics?.online === true
     } catch (err: any) {
       setMetrics((prev) => (prev ? { ...prev, online: false } : null))
+      return false
     } finally {
       setLoading(false)
     }
@@ -216,11 +257,83 @@ export default function App() {
   }
 
   useEffect(() => {
-    fetchMetrics()
+    fetchConfig()
+    fetchMetrics().then((isUp) => {
+      // If Pi is offline on initial launch, prompt for connection IP
+      if (!isUp && !sessionStorage.getItem("pimetrics_ip_prompt_dismissed")) {
+        setShowIpModal(true)
+      }
+    })
     fetchDetails()
     const timer = setInterval(fetchMetrics, pollInterval)
     return () => clearInterval(timer)
   }, [pollInterval])
+
+  const handleTestConnection = async () => {
+    if (!inputHost.trim()) return
+    setTestStatus({ state: "testing" })
+    try {
+      const res = await fetch("/api/test_connection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          host: inputHost.trim(),
+          user: inputUser.trim() || "pi",
+          port: Number(inputPort) || 22,
+        }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        setTestStatus({
+          state: "success",
+          latency: data.latency_ms,
+          model: data.model,
+          message: `Connected successfully! Latency: ${data.latency_ms} ms (${data.model || "Raspberry Pi"})`,
+        })
+      } else {
+        setTestStatus({
+          state: "error",
+          message: data.error || "Connection test failed",
+        })
+      }
+    } catch (err: any) {
+      setTestStatus({
+        state: "error",
+        message: "Failed to reach Pi Metrics server: " + err.message,
+      })
+    }
+  }
+
+  const handleSaveConfig = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    if (!inputHost.trim()) return
+    setIsSavingConfig(true)
+    try {
+      const res = await fetch("/api/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pi_host: inputHost.trim(),
+          pi_user: inputUser.trim() || "pi",
+          pi_port: Number(inputPort) || 22,
+        }),
+      })
+      const data = await res.json()
+      if (data.ok && data.config) {
+        setConfig(data.config)
+        sessionStorage.setItem("pimetrics_ip_prompt_dismissed", "true")
+        setShowIpModal(false)
+        setIsRefreshing(true)
+        await fetchMetrics()
+        await fetchDetails(true)
+        setIsRefreshing(false)
+      }
+    } catch (err: any) {
+      alert("Failed to save configuration: " + err.message)
+    } finally {
+      setIsSavingConfig(false)
+    }
+  }
 
   const handleManualRefresh = async () => {
     setIsRefreshing(true)
@@ -289,9 +402,25 @@ export default function App() {
                   Pi 5
                 </span>
               </div>
-              <p className="text-[10px] sm:text-xs text-muted-foreground font-mono truncate">
-                {metrics?.hostname || "hermes-pi"} · 192.168.1.9
-              </p>
+              <div className="flex items-center space-x-1.5 mt-0.5">
+                <p className="text-[10px] sm:text-xs text-muted-foreground font-mono truncate">
+                  {metrics?.hostname || "raspberrypi"} · {config.pi_host}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInputHost(config.pi_host)
+                    setInputUser(config.pi_user)
+                    setInputPort(config.pi_port)
+                    setTestStatus({ state: "idle" })
+                    setShowIpModal(true)
+                  }}
+                  className="text-[10px] text-raspberry hover:underline font-mono font-semibold cursor-pointer"
+                  title="Change target IP address"
+                >
+                  [Change IP]
+                </button>
+              </div>
             </div>
           </div>
 
@@ -329,6 +458,25 @@ export default function App() {
               />
               <span className="text-muted-foreground">{isOnline ? `${Math.round(metrics?.latency_ms || 0)}ms` : "off"}</span>
             </div>
+
+            {/* Change IP button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setInputHost(config.pi_host)
+                setInputUser(config.pi_user)
+                setInputPort(config.pi_port)
+                setTestStatus({ state: "idle" })
+                setShowIpModal(true)
+              }}
+              className="h-8 px-2 sm:px-3 text-xs active:scale-95 transition-transform border-dashed hover:border-solid hover:border-raspberry"
+              title="Change target Raspberry Pi IP address"
+            >
+              <Radio className="h-3.5 w-3.5 text-raspberry" />
+              <span className="hidden sm:inline ml-1.5 font-mono">{config.pi_host}</span>
+              <span className="sm:hidden ml-1">IP</span>
+            </Button>
 
             {/* Poll selector (hidden on details tab) */}
             {activeTab === "metrics" && (
@@ -374,6 +522,45 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      {/* Offline Alert Banner with direct Connect / Change IP button */}
+      {!loading && !isOnline && (
+        <div className="bg-destructive/15 border-b border-destructive/40 px-3 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs sm:text-sm">
+          <div className="flex items-center space-x-2 text-destructive-foreground">
+            <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0" />
+            <span>
+              Cannot reach Raspberry Pi at <strong className="font-mono">{config.pi_host}</strong> (Port {config.pi_port}).
+            </span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => {
+                setInputHost(config.pi_host)
+                setInputUser(config.pi_user)
+                setInputPort(config.pi_port)
+                setTestStatus({ state: "idle" })
+                setShowIpModal(true)
+              }}
+              className="h-7 text-xs font-semibold"
+            >
+              <Radio className="h-3 w-3 mr-1" />
+              Change IP / Connect
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className="h-7 text-xs"
+            >
+              <RefreshCw className={`h-3 w-3 mr-1 ${isRefreshing ? "animate-spin" : ""}`} />
+              Retry
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Main Tab Switcher Bar */}
       <div className="bg-card/40 border-b border-border/30">
@@ -1178,6 +1365,176 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* Connect to Raspberry Pi Modal */}
+      {showIpModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-card border border-border w-full max-w-lg p-5 sm:p-6 shadow-2xl relative text-card-foreground">
+            {/* Close button */}
+            <button
+              type="button"
+              onClick={() => {
+                sessionStorage.setItem("pimetrics_ip_prompt_dismissed", "true")
+                setShowIpModal(false)
+              }}
+              className="absolute top-4 right-4 text-muted-foreground hover:text-foreground p-1 transition-colors cursor-pointer"
+              title="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            {/* Modal Header */}
+            <div className="flex items-center space-x-3 mb-5">
+              <div className="h-10 w-10 bg-raspberry/15 border border-raspberry/40 flex items-center justify-center text-raspberry flex-shrink-0">
+                <Radio className="h-5 w-5 fill-current text-raspberry animate-pulse" />
+              </div>
+              <div>
+                <h2 className="text-sm sm:text-base font-extrabold tracking-tight text-foreground uppercase">
+                  Connect to Raspberry Pi
+                </h2>
+                <p className="text-xs text-muted-foreground font-mono">
+                  Specify the IP address or hostname to monitor
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveConfig} className="space-y-4">
+              {/* Host/IP Field */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                  Raspberry Pi IP Address / Hostname <span className="text-raspberry">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={inputHost}
+                  onChange={(e) => {
+                    setInputHost(e.target.value)
+                    setTestStatus({ state: "idle" })
+                  }}
+                  placeholder="e.g. 192.168.1.9 or raspberrypi.local"
+                  required
+                  autoFocus
+                  className="w-full bg-secondary/80 border border-border px-3 py-2 text-sm font-mono text-foreground focus:outline-none focus:border-raspberry focus:ring-1 focus:ring-raspberry transition-colors"
+                />
+                <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <span>Presets:</span>
+                  {["192.168.1.9", "raspberrypi.local", "192.168.0.100", "pi.local"].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => {
+                        setInputHost(preset)
+                        setTestStatus({ state: "idle" })
+                      }}
+                      className="px-2 py-0.5 bg-secondary border border-border hover:border-raspberry/60 hover:text-foreground font-mono transition-colors text-[10px] cursor-pointer"
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* User & Port Fields */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                    SSH User
+                  </label>
+                  <input
+                    type="text"
+                    value={inputUser}
+                    onChange={(e) => {
+                      setInputUser(e.target.value)
+                      setTestStatus({ state: "idle" })
+                    }}
+                    placeholder="pi"
+                    className="w-full bg-secondary/80 border border-border px-3 py-2 text-sm font-mono text-foreground focus:outline-none focus:border-raspberry focus:ring-1 focus:ring-raspberry transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                    SSH Port
+                  </label>
+                  <input
+                    type="number"
+                    value={inputPort}
+                    onChange={(e) => {
+                      setInputPort(parseInt(e.target.value) || 22)
+                      setTestStatus({ state: "idle" })
+                    }}
+                    placeholder="22"
+                    className="w-full bg-secondary/80 border border-border px-3 py-2 text-sm font-mono text-foreground focus:outline-none focus:border-raspberry focus:ring-1 focus:ring-raspberry transition-colors"
+                  />
+                </div>
+              </div>
+
+              {/* Test Status Feedback Box */}
+              {testStatus.state !== "idle" && (
+                <div
+                  className={`p-3 text-xs border font-mono flex items-start space-x-2 ${
+                    testStatus.state === "testing"
+                      ? "bg-secondary/60 border-border text-muted-foreground"
+                      : testStatus.state === "success"
+                      ? "bg-emerald-950/40 border-emerald-500/50 text-emerald-300"
+                      : "bg-destructive/15 border-destructive/50 text-destructive-foreground"
+                  }`}
+                >
+                  {testStatus.state === "testing" && (
+                    <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground mt-0.5 flex-shrink-0" />
+                  )}
+                  {testStatus.state === "success" && (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-400 mt-0.5 flex-shrink-0" />
+                  )}
+                  {testStatus.state === "error" && (
+                    <AlertCircle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
+                  )}
+                  <div className="flex-1 break-words">
+                    {testStatus.state === "testing" && `Testing connection to ${inputHost}:${inputPort}...`}
+                    {testStatus.message}
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-between pt-3 border-t border-border/40 gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleTestConnection}
+                  disabled={testStatus.state === "testing" || !inputHost.trim()}
+                  className="text-xs font-mono"
+                >
+                  <Activity className="h-3.5 w-3.5 mr-1.5" />
+                  Test Connection
+                </Button>
+
+                <div className="flex items-center space-x-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      sessionStorage.setItem("pimetrics_ip_prompt_dismissed", "true")
+                      setShowIpModal(false)
+                    }}
+                    className="text-xs"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="default"
+                    disabled={isSavingConfig || !inputHost.trim()}
+                    className="bg-raspberry hover:bg-raspberry/90 text-white font-bold text-xs"
+                  >
+                    <Check className="h-3.5 w-3.5 mr-1.5" />
+                    {isSavingConfig ? "Saving..." : "Connect & Save"}
+                  </Button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
