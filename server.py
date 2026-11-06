@@ -51,6 +51,15 @@ def get_config_file_path():
 
 CONFIG_FILE = get_config_file_path()
 
+CREATE_NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)
+
+
+def host_check_output(cmd, **kwargs):
+    """Run a local host subprocess without popping up a black console window on Windows."""
+    if sys.platform == 'win32':
+        kwargs['creationflags'] = CREATE_NO_WINDOW
+    return subprocess.check_output(cmd, **kwargs)
+
 DEFAULT_CONFIG = {
     "pi_host": "192.168.1.9",
     "pi_user": "pi",
@@ -241,7 +250,7 @@ PY
             script
         ]
         try:
-            raw = subprocess.check_output(ssh_cmd, stderr=subprocess.DEVNULL, timeout=6.0, text=True)
+            raw = host_check_output(ssh_cmd, stderr=subprocess.DEVNULL, timeout=6.0, text=True)
             for line in raw.strip().splitlines():
                 line = line.strip()
                 if line.startswith('{') and line.endswith('}'):
@@ -478,7 +487,7 @@ PY
 
         t0 = time.time()
         try:
-            out = subprocess.check_output(ssh_cmd, stderr=subprocess.DEVNULL, timeout=4.0, text=True)
+            out = host_check_output(ssh_cmd, stderr=subprocess.DEVNULL, timeout=4.0, text=True)
             duration_ms = (time.time() - t0) * 1000
             
             # Find the JSON part in out (strip any banner like 'Please note that SSH...')
@@ -680,7 +689,7 @@ class MetricsRequestHandler(SimpleHTTPRequestHandler):
                     "cat /proc/device-tree/model 2>/dev/null || uname -m"
                 ]
                 try:
-                    out = subprocess.check_output(ssh_cmd, stderr=subprocess.STDOUT, timeout=4.0, text=True)
+                    out = host_check_output(ssh_cmd, stderr=subprocess.STDOUT, timeout=4.0, text=True)
                     latency_ms = round((time.time() - t0) * 1000, 1)
                     clean_lines = [l.strip().replace('\x00', '') for l in out.strip().splitlines() if l.strip() and not l.startswith('Please note') and not l.startswith('See http')]
                     model_str = clean_lines[-1] if clean_lines else "Raspberry Pi"

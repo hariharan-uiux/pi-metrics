@@ -1,6 +1,6 @@
 {
   "name": "pi-metrics",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "A standalone real-time Raspberry Pi 5 hardware monitor and telemetry dashboard for Linux.",
   "main": "index.js",
   "scripts": {

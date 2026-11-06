@@ -256,15 +256,20 @@ export default function App() {
     }
   }
 
+  // Run startup initialization once on app mount
   useEffect(() => {
     fetchConfig()
     fetchMetrics().then((isUp) => {
-      // If Pi is offline on initial launch, prompt for connection IP
-      if (!isUp && !sessionStorage.getItem("pimetrics_ip_prompt_dismissed")) {
+      if (!isUp && !sessionStorage.getItem("pimetrics_ip_modal_shown")) {
+        sessionStorage.setItem("pimetrics_ip_modal_shown", "true")
         setShowIpModal(true)
       }
     })
     fetchDetails()
+  }, [])
+
+  // Background polling interval
+  useEffect(() => {
     const timer = setInterval(fetchMetrics, pollInterval)
     return () => clearInterval(timer)
   }, [pollInterval])
