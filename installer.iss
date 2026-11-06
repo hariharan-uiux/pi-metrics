@@ -2,7 +2,7 @@
 ; Generates a professional Windows installer (PiMetrics-Setup-x64.exe)
 
 #define MyAppName "Pi Metrics"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.3"
 #define MyAppPublisher "HariHaran"
 #define MyAppURL "https://github.com/hariharan-uiux/pi-metrics"
 #define MyAppExeName "PiMetrics.exe"
@@ -22,7 +22,7 @@ LicenseFile=LICENSE
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=commandline dialog
 OutputDir=setup_output
-OutputBaseFilename=PiMetrics-Setup-x64
+OutputBaseFilename=PiMetrics-v{#MyAppVersion}-Windows-x64-Setup
 SetupIconFile=assets\pi-metrics.ico
 UninstallDisplayIcon={app}\assets\pi-metrics.ico
 Compression=lzma2/ultra64

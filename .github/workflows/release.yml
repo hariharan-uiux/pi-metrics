@@ -53,7 +53,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: PiMetrics-Setup-x64
-          path: setup_output/PiMetrics-Setup-x64.exe
+          path: setup_output/*.exe
 
   build-linux:
     name: Package Linux (.deb & .tar.gz)
@@ -105,7 +105,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            PiMetrics-Setup-x64/PiMetrics-Setup-x64.exe
+            PiMetrics-Setup-x64/*.exe
             pi-metrics-linux-packages/pi-metrics_*_all.deb
             pi-metrics-linux-packages/pi-metrics-*-linux-x64.tar.gz
           draft: false

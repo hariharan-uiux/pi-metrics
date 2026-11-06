@@ -78,10 +78,10 @@ mkdir "%DIR%setup_output" 2>nul
 "%ISCC_EXE%" "%DIR%installer.iss"
 
 echo.
-if exist "%DIR%setup_output\PiMetrics-Setup-x64.exe" (
+if exist "%DIR%setup_output\PiMetrics-*.exe" (
     echo ========================================================
-    echo  ✨ SUCCESS! Windows Installer created:
-    echo     %DIR%setup_output\PiMetrics-Setup-x64.exe
+    echo  ✨ SUCCESS! Windows Installer created in setup_output:
+    dir /b "%DIR%setup_output\*.exe"
     echo ========================================================
 ) else (
     echo Compilation finished. Check the setup_output\ directory.

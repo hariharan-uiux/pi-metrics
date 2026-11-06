@@ -51,13 +51,13 @@ sudo dpkg -i pi-metrics_1.0.1_all.deb
 
 ### 2. Windows Desktop App & Installer 🪟
 
-#### Option A: Windows Installer (`PiMetrics-Setup-x64.exe`)
-- **Download from GitHub Actions / Releases**: Every push builds the compiled Windows setup executable via GitHub Actions.
+#### Option A: Windows Installer (`PiMetrics-v1.0.3-Windows-x64-Setup.exe`)
+- **Download from GitHub Releases**: Standard compiled Windows setup wizard with desktop shortcut, uninstaller, and embedded runtime.
 - **Build Installer Locally**:
   ```cmd
   build-installer.bat
   ```
-  Packages the backend, frontend, and Edge WebView2 runner into a standard Windows setup installer with wizard, desktop shortcut option, and uninstaller.
+  Packages the backend, frontend, and Edge WebView2 runner into a standalone setup wizard installer.
 
 #### Option B: 1-Click Local Setup (`Setup.bat`)
 - Double-click `Setup.bat` (or run `powershell -ExecutionPolicy Bypass -File Setup-PiMetrics.ps1`).

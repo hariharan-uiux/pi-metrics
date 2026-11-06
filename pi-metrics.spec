@@ -18,6 +18,7 @@ a = Analysis(
     binaries=[],
     datas=datas,
     hiddenimports=[
+        'server',
         'webview',
         'webview.platforms.winforms',
         'webview.platforms.edgechromium',

@@ -18,8 +18,38 @@ import time
 from http.server import HTTPServer, SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-STATIC_DIR = os.path.join(BASE_DIR, 'dist') if os.path.exists(os.path.join(BASE_DIR, 'dist')) else os.path.join(BASE_DIR, 'static')
-CONFIG_FILE = os.path.join(BASE_DIR, 'config.json')
+if getattr(sys, 'frozen', False):
+    BUNDLE_DIR = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
+else:
+    BUNDLE_DIR = BASE_DIR
+
+def get_static_dir():
+    candidates = [
+        os.path.join(BUNDLE_DIR, 'dist'),
+        os.path.join(os.path.dirname(sys.executable), 'dist') if getattr(sys, 'frozen', False) else None,
+        os.path.join(BASE_DIR, 'dist'),
+        os.path.join(BUNDLE_DIR, 'static'),
+        os.path.join(BASE_DIR, 'static'),
+    ]
+    for c in candidates:
+        if c and os.path.exists(c) and os.path.isdir(c):
+            return c
+    return os.path.join(BUNDLE_DIR, 'dist')
+
+STATIC_DIR = get_static_dir()
+
+def get_config_file_path():
+    if getattr(sys, 'frozen', False) and sys.platform == 'win32':
+        app_data = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'PiMetrics')
+        os.makedirs(app_data, exist_ok=True)
+        return os.path.join(app_data, 'config.json')
+    elif getattr(sys, 'frozen', False) and sys.platform != 'win32':
+        app_data = os.path.join(os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.config')), 'pi-metrics')
+        os.makedirs(app_data, exist_ok=True)
+        return os.path.join(app_data, 'config.json')
+    return os.path.join(BASE_DIR, 'config.json')
+
+CONFIG_FILE = get_config_file_path()
 
 DEFAULT_CONFIG = {
     "pi_host": "192.168.1.9",
@@ -32,19 +62,26 @@ DEFAULT_CONFIG = {
 
 
 def load_config():
+    cfg = dict(DEFAULT_CONFIG)
+    bundled_cfg = os.path.join(BUNDLE_DIR, 'config.json')
+    if os.path.exists(bundled_cfg):
+        try:
+            with open(bundled_cfg, 'r', encoding='utf-8') as f:
+                cfg.update(json.load(f))
+        except Exception:
+            pass
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-                cfg = dict(DEFAULT_CONFIG)
                 cfg.update(json.load(f))
-                return cfg
         except Exception:
             pass
-    return dict(DEFAULT_CONFIG)
+    return cfg
 
 
 def save_config(cfg):
     try:
+        os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
         with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
             json.dump(cfg, f, indent=2)
         return True
@@ -682,6 +719,46 @@ class MetricsRequestHandler(SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
         # Silence verbose standard GET logging to keep terminal output clean
         pass
+
+
+_http_server = None
+_poller = None
+
+
+def start_background_server(port=None, host=None):
+    global _http_server, _poller, poller, STATIC_DIR, CONFIG_FILE
+    STATIC_DIR = get_static_dir()
+    CONFIG_FILE = get_config_file_path()
+    cfg = load_config()
+    server_port = int(port or cfg.get('server_port', 5055))
+    bind_host = host or ('127.0.0.1' if sys.platform == 'win32' else '0.0.0.0')
+
+    poller = PiPoller(cfg)
+    _poller = poller
+
+    _http_server = ThreadingHTTPServer((bind_host, server_port), MetricsRequestHandler)
+    print(f"🚀 Pi Metrics server listening on http://{bind_host}:{server_port}")
+
+    poll_thread = threading.Thread(target=poller.worker_loop, daemon=True)
+    poll_thread.start()
+
+    threading.Thread(target=poller.fetch_system_details, daemon=True).start()
+
+    server_thread = threading.Thread(target=_http_server.serve_forever, daemon=True)
+    server_thread.start()
+    return _http_server
+
+
+def stop_background_server():
+    global _http_server, _poller
+    if _poller:
+        _poller.running = False
+    if _http_server:
+        try:
+            _http_server.shutdown()
+            _http_server.server_close()
+        except Exception:
+            pass
 
 
 def main():

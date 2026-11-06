@@ -124,12 +124,12 @@ def run_app_mode(target_url, browser_exe):
         f"--user-data-dir={user_data_dir}",
         "--app-id=io.github.pimetrics",
         "--enable-features=OverlayScrollbar",
-        "--hide-crash-restore-bubble"
+        "--hide-crash-restore-bubble",
+        "--no-first-run",
+        "--no-default-browser-check"
     ]
 
-    # Windows creation flag: DETACHED_PROCESS = 0x00000008
-    creation_flags = 0x00000008 if sys.platform == "win32" else 0
-    proc = subprocess.Popen(args, creationflags=creation_flags)
+    proc = subprocess.Popen(args)
     return proc
 
 
@@ -145,72 +145,35 @@ def main():
     server_port = args.port or cfg.get("server_port", 5055)
     target_url = "http://127.0.0.1:5173" if args.dev else f"http://127.0.0.1:{server_port}"
 
-    server_proc = None
-
     def cleanup():
-        nonlocal server_proc
-        if server_proc:
+        try:
+            import server
+            server.stop_background_server()
+        except Exception:
+            pass
+        if os.path.exists(PID_FILE):
             try:
-                server_proc.terminate()
-                server_proc.wait(timeout=1.5)
-            except Exception:
-                try:
-                    server_proc.kill()
-                except Exception:
-                    pass
-            server_proc = None
-            if os.path.exists(PID_FILE):
-                try:
-                    os.remove(PID_FILE)
-                except Exception:
-                    pass
-
-    # Ensure backend server is running
-    if not args.dev and not args.no_server:
-        if not is_server_ready(server_port):
-            # Check if dist exists, build if needed
-            dist_dir = os.path.join(APP_DIR, "dist")
-            if not os.path.exists(dist_dir) or not os.path.exists(os.path.join(dist_dir, "index.html")):
-                print("Pi Metrics: Building frontend assets...")
-                subprocess.run(["npm", "run", "build"], cwd=APP_DIR, shell=True, check=True)
-
-            print(f"Pi Metrics: Starting backend server on port {server_port}...")
-            server_script = os.path.join(APP_DIR, "server.py")
-
-            # CREATE_NO_WINDOW = 0x08000000 to prevent CMD flash on Windows
-            creationflags = 0x08000000 if sys.platform == "win32" else 0
-            log_file = os.path.join(os.environ.get("TEMP", "C:\\Temp"), "pi-metrics-server.log")
-            log_f = open(log_file, "w", encoding="utf-8")
-            server_proc = subprocess.Popen(
-                [sys.executable, server_script],
-                cwd=APP_DIR,
-                creationflags=creationflags,
-                stdout=log_f,
-                stderr=subprocess.STDOUT
-            )
-
-            try:
-                with open(PID_FILE, "w") as f:
-                    f.write(str(server_proc.pid))
+                os.remove(PID_FILE)
             except Exception:
                 pass
+
+    # Ensure backend server is running in-process (embedded daemon)
+    if not args.dev and not args.no_server:
+        if not is_server_ready(server_port):
+            print(f"Pi Metrics: Starting embedded server on port {server_port}...")
+            import server
+            server.start_background_server(port=server_port, host="127.0.0.1")
 
             # Wait for backend
             start_t = time.time()
             ready = False
-            while time.time() - start_t < 10.0:
+            while time.time() - start_t < 4.0:
                 if is_server_ready(server_port):
                     ready = True
                     break
-                if server_proc.poll() is not None:
-                    print(f"[ERROR] Backend server failed to start (exit code {server_proc.returncode}).")
-                    if os.path.exists(log_file):
-                        with open(log_file, "r", encoding="utf-8", errors="ignore") as lf:
-                            print(lf.read())
-                    break
-                time.sleep(0.2)
+                time.sleep(0.05)
             if not ready:
-                print("Warning: Backend server took longer than expected to start.")
+                print("Warning: Embedded backend server took longer than expected to bind.")
         else:
             print(f"Pi Metrics: Connected to existing backend server on port {server_port}.")
 
@@ -249,10 +212,9 @@ def main():
         print("Launching in default web browser...")
         import webbrowser
         webbrowser.open(target_url)
-        if server_proc:
-            print("App running. Press Ctrl+C to exit...")
-            while True:
-                time.sleep(1)
+        print("App running. Press Ctrl+C to exit...")
+        while True:
+            time.sleep(1)
 
     except KeyboardInterrupt:
         pass
