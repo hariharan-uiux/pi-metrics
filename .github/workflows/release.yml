@@ -1,0 +1,113 @@
+name: Build & Release Desktop Apps
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Package Windows Installer (.exe)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Frontend Dependencies & Build Web Assets
+        run: |
+          npm install
+          npm run build
+
+      - name: Install Python Packaging Tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller pywebview
+
+      - name: Build Standalone Application with PyInstaller
+        run: |
+          pyinstaller --clean --distpath build_exe --workpath build_tmp pi-metrics.spec -y
+
+      - name: Install Inno Setup
+        run: |
+          choco install innosetup --no-progress -y
+
+      - name: Compile Inno Setup Installer (.EXE)
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+
+      - name: Upload Windows Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PiMetrics-Setup-x64
+          path: setup_output/PiMetrics-Setup-x64.exe
+
+  build-linux:
+    name: Package Linux (.deb & .tar.gz)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Frontend Dependencies & Build Web Assets
+        run: |
+          npm install
+          npm run build
+
+      - name: Build Debian Package (.deb)
+        run: |
+          chmod +x build-deb.sh
+          ./build-deb.sh
+
+      - name: Build Standalone Linux Tarball (.tar.gz)
+        run: |
+          VERSION=$(node -p "require('./package.json').version || '1.0.1'")
+          tar --exclude='__pycache__' --exclude='*.pyc' --exclude='node_modules' --exclude='.git' \
+            -czvf "pi-metrics-${VERSION}-linux-x64.tar.gz" \
+            app.py server.py cli.py start.sh install.sh config.json pi-metrics.desktop assets dist LICENSE README.md
+
+      - name: Upload Linux Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pi-metrics-linux-packages
+          path: |
+            pi-metrics_*_all.deb
+            pi-metrics-*-linux-x64.tar.gz
+
+  release:
+    name: Publish GitHub Release
+    needs: [build-windows, build-linux]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            PiMetrics-Setup-x64/PiMetrics-Setup-x64.exe
+            pi-metrics-linux-packages/pi-metrics_*_all.deb
+            pi-metrics-linux-packages/pi-metrics-*-linux-x64.tar.gz
+          draft: false
+          prerelease: false
+          generate_release_notes: true

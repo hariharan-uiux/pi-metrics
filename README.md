@@ -23,15 +23,20 @@ Connects passwordlessly over SSH to `pi@192.168.1.9` (`hermes-pi`), collects gra
 
 ## Quick Start
 
-### 1. Linux Desktop App
+### 1. Linux Desktop App 🐧
+
+#### Installation (.deb Package for Ubuntu / Debian / Mint / Pop!_OS)
+Download the `.deb` package from [Releases](https://github.com/hariharan-uiux/pi-metrics/releases) and install:
+```bash
+sudo dpkg -i pi-metrics_1.0.1_all.deb
+# Or build locally:
+./build-deb.sh
+```
+
+#### Launching
 - **From Desktop**: Double-click the **Pi Metrics** icon on your desktop.
 - **From App Launcher**: Search for **Pi Metrics** in GNOME / Super key menu.
-- **From Command Line**:
-  ```bash
-  pi-metrics
-  # Or from project folder:
-  cd ~/projects/pi-metrics && ./start.sh
-  ```
+- **From Command Line**: `pi-metrics` (or `./start.sh` in the project folder).
 
 #### Linux Keyboard Shortcuts
 - `F5` or `Ctrl+R`: Reload dashboard
