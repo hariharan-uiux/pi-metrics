@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pi Metrics · Raspberry Pi 5 Hardware Monitor</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍓</text></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top Navigation Bar -->
+    <header class="top-nav">
+      <div class="nav-left">
+        <div class="brand-badge">
+          <div class="pi-logo">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <rect x="4" y="4" width="16" height="16" rx="3" fill="#e30b5d" />
+              <rect x="9" y="9" width="6" height="6" rx="1" fill="#ffffff" />
+              <circle cx="7" cy="7" r="1.2" fill="#ffffff" />
+              <circle cx="17" cy="7" r="1.2" fill="#ffffff" />
+              <circle cx="7" cy="17" r="1.2" fill="#ffffff" />
+              <circle cx="17" cy="17" r="1.2" fill="#ffffff" />
+            </svg>
+          </div>
+          <div class="brand-text">
+            <div class="brand-title">PI METRICS</div>
+            <div class="brand-subtitle" id="topHostInfo">hermes-pi · 192.168.1.9</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="nav-center">
+        <div class="status-indicator-pill" id="statusPill">
+          <span class="status-dot pulse" id="statusDot"></span>
+          <span class="status-label" id="statusLabel">CONNECTING...</span>
+          <span class="latency-label" id="latencyLabel">-- ms</span>
+        </div>
+      </div>
+
+      <div class="nav-right">
+        <div class="poll-selector-wrap">
+          <label for="pollSelect">Poll:</label>
+          <select id="pollSelect" class="styled-select">
+            <option value="1">1s</option>
+            <option value="2">2s</option>
+            <option value="3" selected>3s</option>
+            <option value="5">5s</option>
+          </select>
+        </div>
+
+        <button class="btn btn-secondary" id="btnRefresh" title="Refresh metrics">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+          </svg>
+          <span>Refresh</span>
+        </button>
+
+        <button class="btn btn-primary" id="btnSsh" title="Open SSH terminal to Pi">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="4 17 10 11 4 5"/>
+            <line x1="12" y1="19" x2="20" y2="19"/>
+          </svg>
+          <span>SSH Terminal</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Dashboard Grid -->
+    <main class="dashboard-content">
+      <!-- 4 Core Metric Cards Row -->
+      <section class="cards-grid">
+        <!-- Card 1: SoC Temperature & Clock -->
+        <div class="metric-card" id="cardTemp">
+          <div class="card-header">
+            <div class="card-title-wrap">
+              <span class="card-icon temp-icon">🌡️</span>
+              <span class="card-title">SoC Temperature</span>
+            </div>
+            <span class="card-badge" id="tempBadge">Normal</span>
+          </div>
+          <div class="card-body">
+            <div class="primary-metric">
+              <span class="metric-number" id="tempValue">--</span>
+              <span class="metric-unit">°C</span>
+            </div>
+            <div class="meter-bar-track">
+              <div class="meter-bar-fill temp-fill" id="tempFill" style="width: 0%;"></div>
+            </div>
+          </div>
+          <div class="card-footer">
+            <div class="footer-stat">
+              <span class="stat-lbl">Clock</span>
+              <span class="stat-val" id="clockValue">-- MHz</span>
+            </div>
+            <div class="footer-stat">
+              <span class="stat-lbl">Throttling</span>
+              <span class="stat-val" id="throttledValue">0x0 (None)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2: CPU Load -->
+        <div class="metric-card" id="cardCpu">
+          <div class="card-header">
+            <div class="card-title-wrap">
+              <span class="card-icon cpu-icon">⚡</span>
+              <span class="card-title">CPU Load Average</span>
+            </div>
+            <span class="card-badge info-badge" id="coresBadge">4 Cores (Cortex-A76)</span>
+          </div>
+          <div class="card-body">
+            <div class="primary-metric">
+              <span class="metric-number" id="loadValue">--</span>
+              <span class="metric-unit">1m load</span>
+            </div>
+            <div class="meter-bar-track">
+              <div class="meter-bar-fill cpu-fill" id="loadFill" style="width: 0%;"></div>
+            </div>
+          </div>
+          <div class="card-footer">
+            <div class="footer-stat">
+              <span class="stat-lbl">5m Avg</span>
+              <span class="stat-val" id="load5Value">--</span>
+            </div>
+            <div class="footer-stat">
+              <span class="stat-lbl">15m Avg</span>
+              <span class="stat-val" id="load15Value">--</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 3: RAM & Swap -->
+        <div class="metric-card" id="cardMem">
+          <div class="card-header">
+            <div class="card-title-wrap">
+              <span class="card-icon mem-icon">💾</span>
+              <span class="card-title">Memory (LPDDR4X)</span>
+            </div>
+            <span class="card-badge" id="memBadge">--%</span>
+          </div>
+          <div class="card-body">
+            <div class="primary-metric">
+              <span class="metric-number" id="memUsedValue">--</span>
+              <span class="metric-unit" id="memTotalUnit">/ 8.0 GB</span>
+            </div>
+            <div class="meter-bar-track">
+              <div class="meter-bar-fill mem-fill" id="memFill" style="width: 0%;"></div>
+            </div>
+          </div>
+          <div class="card-footer">
+            <div class="footer-stat">
+              <span class="stat-lbl">Available</span>
+              <span class="stat-val" id="memAvailValue">-- GB</span>
+            </div>
+            <div class="footer-stat">
+              <span class="stat-lbl">Swap</span>
+              <span class="stat-val" id="swapValue">0 / 2.0 GB</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 4: Network Throughput -->
+        <div class="metric-card" id="cardNet">
+          <div class="card-header">
+            <div class="card-title-wrap">
+              <span class="card-icon net-icon">🌐</span>
+              <span class="card-title">Network Activity</span>
+            </div>
+            <span class="card-badge info-badge" id="netActiveIface">eth0</span>
+          </div>
+          <div class="card-body">
+            <div class="net-metric-split">
+              <div class="net-dir">
+                <span class="net-dir-label">⬇ RX</span>
+                <span class="net-dir-val" id="netRxRate">0.0 KB/s</span>
+              </div>
+              <div class="net-dir">
+                <span class="net-dir-label">⬆ TX</span>
+                <span class="net-dir-val" id="netTxRate">0.0 KB/s</span>
+              </div>
+            </div>
+            <div class="meter-bar-track">
+              <div class="meter-bar-fill net-fill" id="netFill" style="width: 10%;"></div>
+            </div>
+          </div>
+          <div class="card-footer">
+            <div class="footer-stat">
+              <span class="stat-lbl">Total RX</span>
+              <span class="stat-val" id="netTotalRx">-- MB</span>
+            </div>
+            <div class="footer-stat">
+              <span class="stat-lbl">Total TX</span>
+              <span class="stat-val" id="netTotalTx">-- MB</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Charts & Visual Timeline Section -->
+      <section class="charts-row">
+        <!-- Live Line Chart -->
+        <div class="chart-panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="panel-svg">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+              </svg>
+              <span>Live Telemetry Trends (Last 60 Points)</span>
+            </div>
+            <div class="chart-legend">
+              <span class="legend-item"><span class="legend-dot temp-dot"></span> SoC Temp (°C)</span>
+              <span class="legend-item"><span class="legend-dot cpu-dot"></span> CPU Load</span>
+              <span class="legend-item"><span class="legend-dot mem-dot"></span> Memory (%)</span>
+            </div>
+          </div>
+          <div class="canvas-container">
+            <canvas id="trendChart"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- Disks & Storage + Top Processes Section -->
+      <section class="details-row">
+        <!-- Left: Storage Partitions -->
+        <div class="detail-panel storage-panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="panel-svg">
+                <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+              </svg>
+              <span>Filesystem & Storage</span>
+            </div>
+          </div>
+          <div class="storage-list" id="storageList">
+            <div class="loading-placeholder">Loading disk allocations...</div>
+          </div>
+        </div>
+
+        <!-- Right: Top Processes Table -->
+        <div class="detail-panel proc-panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="panel-svg">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                <line x1="8" y1="21" x2="16" y2="21"></line>
+                <line x1="12" y1="17" x2="12" y2="21"></line>
+              </svg>
+              <span>Top Active Processes</span>
+            </div>
+          </div>
+          <div class="proc-table-wrap">
+            <table class="proc-table">
+              <thead>
+                <tr>
+                  <th>PID</th>
+                  <th>USER</th>
+                  <th>% CPU</th>
+                  <th>% MEM</th>
+                  <th>COMMAND</th>
+                </tr>
+              </thead>
+              <tbody id="procTableBody">
+                <tr><td colspan="5" class="loading-cell">Loading process table...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Bottom System Information Footer -->
+    <footer class="system-footer">
+      <div class="footer-info-item">
+        <span class="f-lbl">Hardware:</span>
+        <span class="f-val" id="fHardware">Raspberry Pi 5 Model B Rev 1.0 (8GB)</span>
+      </div>
+      <div class="footer-info-item">
+        <span class="f-lbl">Operating System:</span>
+        <span class="f-val" id="fOs">Debian GNU/Linux 13 (trixie)</span>
+      </div>
+      <div class="footer-info-item">
+        <span class="f-lbl">Kernel:</span>
+        <span class="f-val" id="fKernel">Linux 6.18.50+rpt-rpi-2712 aarch64</span>
+      </div>
+      <div class="footer-info-item">
+        <span class="f-lbl">Uptime:</span>
+        <span class="f-val" id="fUptime">--</span>
+      </div>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

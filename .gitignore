@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Python cache & runtime
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+*.pid
+/tmp/
+
+# Build outputs
+dist/
+dist-ssr/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Editor directories and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

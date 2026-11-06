@@ -1,0 +1,25 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Pi Metrics
+GenericName=Raspberry Pi Hardware Monitor
+Comment=Real-time Raspberry Pi 5 Hardware Telemetry & Dashboard
+Exec=pi-metrics
+Icon=pi-metrics
+Terminal=false
+Categories=GNOME;GTK;System;Monitor;
+StartupWMClass=pi-metrics
+Keywords=raspberry;pi;metrics;monitor;hardware;ssh;telemetry;
+Actions=SSH;Web;Stop;
+
+[Desktop Action SSH]
+Name=Open SSH Terminal
+Exec=bash -c "cd $(dirname $(which pi-metrics 2>/dev/null || echo .)) && ./start.sh --terminal"
+
+[Desktop Action Web]
+Name=Open in Browser
+Exec=xdg-open http://localhost:5055
+
+[Desktop Action Stop]
+Name=Stop Pi Metrics Server
+Exec=bash -c "cd $(dirname $(which pi-metrics 2>/dev/null || echo .)) && ./start.sh --stop"
