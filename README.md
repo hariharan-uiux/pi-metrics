@@ -28,7 +28,7 @@ Connects passwordlessly over SSH to `pi@192.168.1.9` (`hermes-pi`), collects gra
 #### Installation (.deb Package for Ubuntu / Debian / Mint / Pop!_OS)
 Download the `.deb` package from [Releases](https://github.com/hariharan-uiux/pi-metrics/releases) and install:
 ```bash
-sudo dpkg -i pi-metrics_1.0.4_all.deb
+sudo dpkg -i pi-metrics_1.0.5_all.deb
 # Or build locally:
 ./build-deb.sh
 ```
@@ -51,7 +51,7 @@ sudo dpkg -i pi-metrics_1.0.4_all.deb
 
 ### 2. Windows Desktop App & Installer 🪟
 
-#### Option A: Windows Installer (`PiMetrics-v1.0.4-Windows-x64-Setup.exe`)
+#### Option A: Windows Installer (`PiMetrics-v1.0.5-Windows-x64-Setup.exe`)
 - **Download from GitHub Releases**: Standard compiled Windows setup wizard with desktop shortcut, uninstaller, and embedded runtime.
 - **Build Installer Locally**:
   ```cmd

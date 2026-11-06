@@ -2,7 +2,7 @@
 ; Generates a professional Windows installer (PiMetrics-Setup-x64.exe)
 
 #define MyAppName "Pi Metrics"
-#define MyAppVersion "1.0.4"
+#define MyAppVersion "1.0.5"
 #define MyAppPublisher "HariHaran"
 #define MyAppURL "https://github.com/hariharan-uiux/pi-metrics"
 #define MyAppExeName "PiMetrics.exe"

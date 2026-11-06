@@ -189,6 +189,7 @@ export default function App() {
   const [selectedChartTab, setSelectedChartTab] = useState<string>("temp")
   const [copiedSerial, setCopiedSerial] = useState(false)
   const [copiedJson, setCopiedJson] = useState(false)
+  const [copiedKeyCmd, setCopiedKeyCmd] = useState(false)
 
   // Target Raspberry Pi connection configuration
   const [config, setConfig] = useState<{ pi_host: string; pi_user: string; pi_port: number }>({
@@ -1476,7 +1477,7 @@ export default function App() {
               {/* Test Status Feedback Box */}
               {testStatus.state !== "idle" && (
                 <div
-                  className={`p-3 text-xs border font-mono flex items-start space-x-2 ${
+                  className={`p-3 text-xs border font-mono flex flex-col space-y-2 ${
                     testStatus.state === "testing"
                       ? "bg-secondary/60 border-border text-muted-foreground"
                       : testStatus.state === "success"
@@ -1484,19 +1485,84 @@ export default function App() {
                       : "bg-destructive/15 border-destructive/50 text-destructive-foreground"
                   }`}
                 >
-                  {testStatus.state === "testing" && (
-                    <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground mt-0.5 flex-shrink-0" />
-                  )}
-                  {testStatus.state === "success" && (
-                    <CheckCircle2 className="h-4 w-4 text-emerald-400 mt-0.5 flex-shrink-0" />
-                  )}
-                  {testStatus.state === "error" && (
-                    <AlertCircle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
-                  )}
-                  <div className="flex-1 break-words">
-                    {testStatus.state === "testing" && `Testing connection to ${inputHost}:${inputPort}...`}
-                    {testStatus.message}
+                  <div className="flex items-start space-x-2">
+                    {testStatus.state === "testing" && (
+                      <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground mt-0.5 flex-shrink-0" />
+                    )}
+                    {testStatus.state === "success" && (
+                      <CheckCircle2 className="h-4 w-4 text-emerald-400 mt-0.5 flex-shrink-0" />
+                    )}
+                    {testStatus.state === "error" && (
+                      <AlertCircle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
+                    )}
+                    <div className="flex-1 break-words">
+                      {testStatus.state === "testing" && `Testing connection to ${inputHost}:${inputPort}...`}
+                      {testStatus.message}
+                    </div>
                   </div>
+
+                  {/* Smart Guidance for SSH Auth Failures */}
+                  {testStatus.state === "error" &&
+                    (testStatus.message?.includes("auth failed") ||
+                      testStatus.message?.includes("Permission denied")) && (
+                      <div className="mt-2 pt-2 border-t border-destructive/30 space-y-2">
+                        {inputUser !== "pi" && (
+                          <div className="flex items-center justify-between bg-secondary/80 p-2 border border-border">
+                            <span className="text-[11px] text-foreground">
+                              Pi default user is usually <strong>pi</strong> (not {inputUser}):
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setInputUser("pi")
+                                setTestStatus({ state: "idle" })
+                              }}
+                              className="px-2 py-0.5 bg-raspberry text-white font-bold text-[10px] hover:bg-raspberry/90 cursor-pointer"
+                            >
+                              Set User to "pi"
+                            </button>
+                          </div>
+                        )}
+
+                        <div className="bg-background/90 p-2.5 border border-border text-[11px] text-muted-foreground space-y-1.5">
+                          <p className="font-semibold text-foreground">
+                            🔑 Authorize your computer with SSH key:
+                          </p>
+                          <p className="text-[10px]">
+                            Run this in <strong>Windows PowerShell</strong> to copy your SSH key to the Pi:
+                          </p>
+                          <div className="flex items-center space-x-1.5 bg-black/60 p-1.5 border border-border font-mono text-[10px] text-emerald-400">
+                            <code className="flex-1 overflow-x-auto truncate">
+                              {`type $env:USERPROFILE\\.ssh\\id_rsa.pub | ssh ${inputUser || "pi"}@${inputHost} "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"`}
+                            </code>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(
+                                  `type $env:USERPROFILE\\.ssh\\id_rsa.pub | ssh ${inputUser || "pi"}@${inputHost} "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"`
+                                )
+                                setCopiedKeyCmd(true)
+                                setTimeout(() => setCopiedKeyCmd(false), 2000)
+                              }}
+                              className="px-1.5 py-0.5 bg-secondary text-foreground text-[10px] border border-border hover:bg-secondary/80 flex-shrink-0 cursor-pointer"
+                            >
+                              {copiedKeyCmd ? "Copied!" : "Copy"}
+                            </button>
+                          </div>
+                          <div className="pt-1 flex items-center justify-between">
+                            <span className="text-[10px]">Or test logging in with your Pi password in terminal:</span>
+                            <button
+                              type="button"
+                              onClick={handleOpenTerminal}
+                              className="px-2 py-0.5 bg-secondary text-foreground text-[10px] border border-border hover:bg-secondary/80 cursor-pointer flex items-center space-x-1"
+                            >
+                              <Terminal className="h-3 w-3" />
+                              <span>Open Terminal</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                 </div>
               )}
 
