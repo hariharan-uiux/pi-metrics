@@ -499,6 +499,26 @@ PY
 
 def launch_ssh_terminal(user, host, port):
     title = f'SSH - {user}@{host}'
+    if sys.platform == 'win32':
+        ssh_cmd = f"ssh -p {port} {user}@{host}"
+        if shutil.which("wt.exe") or shutil.which("wt"):
+            try:
+                subprocess.Popen(["wt.exe", "-w", "0", "nt", "--title", title, "ssh", "-p", str(port), f"{user}@{host}"])
+                return True
+            except Exception:
+                pass
+        if shutil.which("powershell.exe"):
+            try:
+                subprocess.Popen(["powershell.exe", "-NoExit", "-Command", f"Write-Host 'Connecting to {user}@{host}...'; ssh -p {port} {user}@{host}"])
+                return True
+            except Exception:
+                pass
+        try:
+            subprocess.Popen(f'start "{title}" cmd /k ssh -p {port} {user}@{host}', shell=True)
+            return True
+        except Exception as e:
+            raise RuntimeError(f"Failed to launch Windows terminal: {e}")
+
     candidates = []
     if shutil.which('ptyxis'):
         candidates.append(['ptyxis', '--title', title, '--', 'ssh', '-p', str(port), f'{user}@{host}'])

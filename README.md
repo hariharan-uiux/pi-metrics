@@ -23,7 +23,7 @@ Connects passwordlessly over SSH to `pi@192.168.1.9` (`hermes-pi`), collects gra
 
 ## Quick Start
 
-### 1. Launch Linux Desktop App
+### 1. Linux Desktop App
 - **From Desktop**: Double-click the **Pi Metrics** icon on your desktop.
 - **From App Launcher**: Search for **Pi Metrics** in GNOME / Super key menu.
 - **From Command Line**:
@@ -33,7 +33,7 @@ Connects passwordlessly over SSH to `pi@192.168.1.9` (`hermes-pi`), collects gra
   cd ~/projects/pi-metrics && ./start.sh
   ```
 
-#### Desktop App Keyboard Shortcuts
+#### Linux Keyboard Shortcuts
 - `F5` or `Ctrl+R`: Reload dashboard
 - `F11`: Toggle Fullscreen
 - `Ctrl++` / `Ctrl+=`: Zoom In
@@ -42,32 +42,48 @@ Connects passwordlessly over SSH to `pi@192.168.1.9` (`hermes-pi`), collects gra
 - `Ctrl+T`: Launch authenticated SSH terminal (Ptyxis / GNOME Terminal)
 - `Ctrl+Q` or `Ctrl+W`: Quit application
 
-### 2. Launch Web Dashboard (Browser Mode)
-```bash
-cd ~/projects/pi-metrics
-./start.sh --web
-```
-Runs the backend in the background and opens `http://localhost:5055` in your default web browser.
+---
 
-### 3. Development Mode (Vite Hot-Reload)
+### 2. Windows Desktop App 🪟
+- **Quick Launch**: Double-click `start.bat` in the project folder, or run:
+  ```cmd
+  start.bat
+  # Or with Python:
+  python app_windows.py
+  ```
+- **Install Desktop & Start Menu Shortcut**:
+  Double-click `install-windows.bat` (or run `powershell -ExecutionPolicy Bypass -File install-windows.ps1`).
+  Creates a **Pi Metrics** shortcut on your Windows Desktop and Start Menu with the custom icon!
+- **Build Standalone Windows .EXE**:
+  Run `build-windows-exe.bat` to package a self-contained `PiMetrics.exe` with PyInstaller.
+
+#### Windows Features
+- **Native Edge WebView2 / App Mode**: Uses Microsoft Edge App Mode (pre-installed on Windows 10/11) or `pywebview` for a clean, dedicated window with zero address bar or browser tab clutter.
+- **1-Click SSH Terminal**: Clicking "SSH Terminal" in the dashboard opens Windows Terminal (`wt.exe`), PowerShell, or Command Prompt directly into `pi@192.168.1.9`.
+- **Background Daemon**: Spawns `server.py` silently in the background and shuts it down cleanly when the window is closed.
+
+---
+
+### 3. Web Dashboard (Browser Mode)
+- **Linux**: `./start.sh --web`
+- **Windows**: `start.bat --web`
+Runs the backend in the background and opens `http://localhost:5055` in your default browser.
+
+### 4. Development Mode (Vite Hot-Reload)
 ```bash
-cd ~/projects/pi-metrics
 npm run dev
-# Or launch desktop app targeting dev server:
-pi-metrics --dev
+# Desktop app targeting dev server:
+# Linux: pi-metrics --dev
+# Windows: start.bat --dev
 ```
 
-### 4. Launch Terminal CLI Monitor
-```bash
-cd ~/projects/pi-metrics
-./start.sh --cli
-```
+### 5. Terminal CLI Monitor
+- **Linux**: `./start.sh --cli`
+- **Windows**: `start.bat --cli`
 
-### 5. Check Status & Stop
-```bash
-./start.sh --status
-./start.sh --stop
-```
+### 6. Check Status & Stop
+- **Linux**: `./start.sh --status` | `./start.sh --stop`
+- **Windows**: `start.bat --status` | `start.bat --stop`
 
 ---
 
@@ -75,22 +91,33 @@ cd ~/projects/pi-metrics
 
 ```
 pi-metrics/
-├── assets/              # High-res SVG and PNG application icons
-│   ├── pi-metrics.svg   # Vector app icon
-│   └── icons/           # Multi-resolution icon set (16px to 512px)
+├── assets/                  # Application icons
+│   ├── pi-metrics.svg       # Vector app icon
+│   ├── pi-metrics.ico       # Multi-res Windows icon (16px to 256px)
+│   ├── pi-metrics.png       # 256px PNG icon
+│   └── icons/               # Multi-resolution icon set
 ├── src/
-│   ├── components/ui/   # shadcn/ui components (card, button, badge, progress, table, tabs)
-│   ├── lib/utils.ts     # shadcn cn() helper
-│   ├── App.tsx          # Main React dashboard component
-│   ├── main.tsx         # React application entrypoint
-│   └── index.css        # Tailwind directives & shadcn design tokens
-├── app.py               # Standalone GTK3 + WebKit2 Linux desktop application
-├── server.py            # Python backend (HTTP server, SSH poller, REST API)
-├── cli.py               # Terminal ANSI live hardware monitor
-├── start.sh             # Launcher & process manager script
-├── config.json          # Polling rate, host, port configuration
-├── vite.config.ts       # Vite bundler & API proxy configuration
-├── tailwind.config.js   # Tailwind theme configuration
-├── package.json         # Node dependencies
-└── README.md            # Documentation
+│   ├── components/ui/       # shadcn/ui components (card, button, badge, progress, table, tabs)
+│   ├── lib/utils.ts         # shadcn cn() helper
+│   ├── App.tsx              # Main React dashboard component
+│   ├── main.tsx             # React application entrypoint
+│   └── index.css            # Tailwind directives & shadcn design tokens
+├── app.py                   # Standalone GTK3 + WebKit2 Linux desktop application
+├── app_windows.py           # Standalone Windows desktop application (Edge / WebView2)
+├── start.sh                 # Linux launcher & process manager
+├── start.bat                # Windows batch launcher & process manager
+├── install.sh               # Linux desktop & icon installation script
+├── install-windows.bat      # Windows desktop shortcut installer
+├── install-windows.ps1      # PowerShell shortcut generator
+├── launch.vbs               # Silent Windows launcher (no console window)
+├── build-windows-exe.bat    # PyInstaller Windows .exe builder script
+├── pi-metrics.spec          # PyInstaller bundle specification
+├── pi-metrics.desktop       # FreeDesktop Linux desktop entry
+├── server.py                # Cross-platform backend (HTTP server, SSH poller, REST API)
+├── cli.py                   # Terminal ANSI live hardware monitor
+├── config.json              # Polling rate, host, port configuration
+├── vite.config.ts           # Vite bundler & API proxy configuration
+├── tailwind.config.js       # Tailwind theme configuration
+├── package.json             # Node dependencies
+└── README.md                # Documentation
 ```
