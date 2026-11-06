@@ -44,18 +44,29 @@ Connects passwordlessly over SSH to `pi@192.168.1.9` (`hermes-pi`), collects gra
 
 ---
 
-### 2. Windows Desktop App 🪟
-- **Quick Launch**: Double-click `start.bat` in the project folder, or run:
+### 2. Windows Desktop App & Installer 🪟
+
+#### Option A: Windows Installer (`PiMetrics-Setup-x64.exe`)
+- **Download from GitHub Actions / Releases**: Every push builds the compiled Windows setup executable via GitHub Actions.
+- **Build Installer Locally**:
   ```cmd
-  start.bat
-  # Or with Python:
-  python app_windows.py
+  build-installer.bat
   ```
-- **Install Desktop & Start Menu Shortcut**:
-  Double-click `install-windows.bat` (or run `powershell -ExecutionPolicy Bypass -File install-windows.ps1`).
-  Creates a **Pi Metrics** shortcut on your Windows Desktop and Start Menu with the custom icon!
-- **Build Standalone Windows .EXE**:
-  Run `build-windows-exe.bat` to package a self-contained `PiMetrics.exe` with PyInstaller.
+  Packages the backend, frontend, and Edge WebView2 runner into a standard Windows setup installer with wizard, desktop shortcut option, and uninstaller.
+
+#### Option B: 1-Click Local Setup (`Setup.bat`)
+- Double-click `Setup.bat` (or run `powershell -ExecutionPolicy Bypass -File Setup-PiMetrics.ps1`).
+- Installs Pi Metrics into `%LocalAppData%\Programs\PiMetrics` (no admin rights required).
+- Creates Desktop & Start Menu shortcuts with the custom Pi icon.
+- Registers in Windows **Installed Apps / Control Panel** for standard uninstallation.
+
+#### Option C: Quick Launch Without Installing
+Double-click `start.bat` in the project folder, or run:
+```cmd
+start.bat
+# Or with Python:
+python app_windows.py
+```
 
 #### Windows Features
 - **Native Edge WebView2 / App Mode**: Uses Microsoft Edge App Mode (pre-installed on Windows 10/11) or `pywebview` for a clean, dedicated window with zero address bar or browser tab clutter.
@@ -91,6 +102,8 @@ npm run dev
 
 ```
 pi-metrics/
+├── .github/workflows/       # GitHub Actions automated Windows installer CI/CD
+│   └── build-windows.yml    # Builds and uploads PiMetrics-Setup-x64.exe
 ├── assets/                  # Application icons
 │   ├── pi-metrics.svg       # Vector app icon
 │   ├── pi-metrics.ico       # Multi-res Windows icon (16px to 256px)
@@ -104,10 +117,14 @@ pi-metrics/
 │   └── index.css            # Tailwind directives & shadcn design tokens
 ├── app.py                   # Standalone GTK3 + WebKit2 Linux desktop application
 ├── app_windows.py           # Standalone Windows desktop application (Edge / WebView2)
+├── Setup.bat                # Windows 1-click interactive setup launcher
+├── Setup-PiMetrics.ps1      # PowerShell native Windows installer & registry setup
+├── installer.iss            # Inno Setup compiler script (PiMetrics-Setup-x64.exe)
+├── build-installer.bat      # Windows Inno Setup installer builder
 ├── start.sh                 # Linux launcher & process manager
 ├── start.bat                # Windows batch launcher & process manager
 ├── install.sh               # Linux desktop & icon installation script
-├── install-windows.bat      # Windows desktop shortcut installer
+├── install-windows.bat      # Windows shortcut installer
 ├── install-windows.ps1      # PowerShell shortcut generator
 ├── launch.vbs               # Silent Windows launcher (no console window)
 ├── build-windows-exe.bat    # PyInstaller Windows .exe builder script
