@@ -275,6 +275,18 @@ export default function App() {
     return () => clearInterval(timer)
   }, [pollInterval])
 
+  // Listen for Escape key to close IP connection modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && showIpModal) {
+        sessionStorage.setItem("pimetrics_ip_prompt_dismissed", "true")
+        setShowIpModal(false)
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [showIpModal])
+
   const handleTestConnection = async () => {
     if (!inputHost.trim()) return
     setTestStatus({ state: "testing" })
@@ -1374,8 +1386,17 @@ export default function App() {
 
       {/* Connect to Raspberry Pi Modal */}
       {showIpModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-card border border-border w-full max-w-lg p-5 sm:p-6 shadow-2xl relative text-card-foreground">
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          onClick={() => {
+            sessionStorage.setItem("pimetrics_ip_prompt_dismissed", "true")
+            setShowIpModal(false)
+          }}
+        >
+          <div
+            className="bg-card border border-border w-full max-w-lg p-5 sm:p-6 shadow-2xl relative text-card-foreground"
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* Close button */}
             <button
               type="button"

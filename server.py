@@ -60,6 +60,128 @@ def host_check_output(cmd, **kwargs):
         kwargs['creationflags'] = CREATE_NO_WINDOW
     return subprocess.check_output(cmd, **kwargs)
 
+
+def is_local_host(host):
+    if not host:
+        return False
+    h = str(host).strip().lower()
+    if h in ('127.0.0.1', 'localhost', '0.0.0.0', '::1'):
+        return True
+    try:
+        my_hostname = socket.gethostname().lower()
+        if h == my_hostname or (h.endswith('.local') and h[:-6] == my_hostname):
+            return True
+    except Exception:
+        pass
+    try:
+        local_addrs = set()
+        for name in (socket.gethostname(), socket.getfqdn(), 'localhost'):
+            try:
+                for info in socket.getaddrinfo(name, None):
+                    local_addrs.add(info[4][0].lower())
+            except Exception:
+                pass
+        if sys.platform != 'win32':
+            try:
+                out = subprocess.check_output("ip -br addr show 2>/dev/null || ifconfig 2>/dev/null", shell=True, text=True)
+                for m in re.finditer(r'(\d+\.\d+\.\d+\.\d+)', out):
+                    local_addrs.add(m.group(1))
+            except Exception:
+                pass
+        if h in local_addrs:
+            return True
+    except Exception:
+        pass
+    return False
+
+
+SYSTEM_DETAILS_CODE = """import subprocess, json, re
+
+def out(c):
+    try:
+        return subprocess.check_output(c, shell=True, text=True, stderr=subprocess.DEVNULL).strip()
+    except Exception:
+        return ''
+
+cpu_info = out('cat /proc/cpuinfo')
+rev_m = re.search(r'Revision\\s+:\\s+(\\S+)', cpu_info)
+ser_m = re.search(r'Serial\\s+:\\s+(\\S+)', cpu_info)
+
+eth_mac = out('cat /sys/class/net/eth0/address')
+wlan_mac = out('cat /sys/class/net/wlan0/address')
+eth_ip = out("ip -4 -br addr show eth0 | awk '{print $3}'")
+wlan_ip = out("ip -4 -br addr show wlan0 | awk '{print $3}'")
+
+details = {
+    'hardware': {
+        'model': out('cat /proc/device-tree/model').rstrip('\\x00'),
+        'revision': rev_m.group(1) if rev_m else 'd04170',
+        'serial': ser_m.group(1) if ser_m else 'Unknown',
+        'soc': 'Broadcom BCM2712',
+        'cpu_arch': 'aarch64 (ARMv8.2-A 64-bit)',
+        'cpu_cores': 4,
+        'cpu_name': 'ARM Cortex-A76',
+        'cpu_max_freq': '2.4 GHz (2400 MHz)',
+        'cpu_min_freq': '1.5 GHz (1500 MHz)',
+        'ram_total': '8.0 GB LPDDR4X-4267',
+        'ram_details': '8453 MB physical SDRAM',
+        'southbridge': 'Raspberry Pi RP1 I/O Controller (PCIe 2.0 x4)',
+        'power_ic': 'Dialog DA9091 PMIC',
+        'core_voltage': out('vcgencmd measure_volts core').replace('volt=', ''),
+        'arm_clock': out('vcgencmd measure_clock arm').split('=')[-1] + ' Hz',
+        'core_clock': out('vcgencmd measure_clock core').split('=')[-1] + ' Hz',
+        'rp1_temp_c': round(float(out('cat /sys/class/hwmon/hwmon1/temp1_input 2>/dev/null') or 0)/1000.0, 1) if out('cat /sys/class/hwmon/hwmon1/temp1_input 2>/dev/null') else None
+    },
+    'firmware': {
+        'bootloader_version': out('vcgencmd bootloader_version'),
+        'vcgencmd_version': out('vcgencmd version'),
+        'config_txt': out('cat /boot/firmware/config.txt | grep -v "^#" | grep -v "^$" | head -n 14')
+    },
+    'os': {
+        'distro': out("cat /etc/os-release | grep PRETTY_NAME | cut -d'=' -f2").strip('"'),
+        'kernel': out('uname -r'),
+        'kernel_full': out('uname -a'),
+        'uptime_full': out('uptime'),
+        'python_version': out('python3 -V'),
+        'gcc_version': out('gcc --version | head -n 1'),
+        'systemd_version': out('systemctl --version | head -n 1')
+    },
+    'network': {
+        'hostname': out('hostname -f 2>/dev/null || hostname'),
+        'interfaces': {
+            'eth0': {
+                'name': 'Gigabit Ethernet',
+                'state': 'UP' if 'UP' in out('ip link show eth0') else 'DOWN',
+                'mac': eth_mac,
+                'ipv4': eth_ip or 'None',
+                'ipv6': out("ip -6 -br addr show eth0 | awk '{print $3}'"),
+                'speed': (out('cat /sys/class/net/eth0/speed 2>/dev/null') or '--') + ' Mbps'
+            },
+            'wlan0': {
+                'name': 'Dual-band Wi-Fi 5 (802.11ac)',
+                'state': 'UP' if 'UP' in out('ip link show wlan0') else 'DOWN',
+                'mac': wlan_mac,
+                'ipv4': wlan_ip or 'Disconnected'
+            }
+        },
+        'default_gateway': out("ip route | grep default | awk '{print $3}'"),
+        'dns_servers': out("grep nameserver /etc/resolv.conf | awk '{print $2}'").split()
+    },
+    'storage': {
+        'block_devices': out('lsblk -o NAME,SIZE,FSTYPE,TYPE,MOUNTPOINT'),
+        'sd_card_model': out('cat /sys/block/mmcblk0/device/name'),
+        'sd_card_manfid': out('cat /sys/block/mmcblk0/device/manfid'),
+        'sd_card_date': out('cat /sys/block/mmcblk0/device/date'),
+        'sd_card_capacity': out('cat /sys/block/mmcblk0/size')
+    },
+    'buses': {
+        'pci_devices': [l for l in out('lspci').splitlines() if l.strip()],
+        'usb_devices': [l for l in out('lsusb').splitlines() if l.strip()]
+    }
+}
+print(json.dumps(details))
+"""
+
 DEFAULT_CONFIG = {
     "pi_host": "192.168.1.9",
     "pi_user": "pi",
@@ -154,120 +276,64 @@ class PiPoller:
         user = self.config.get('pi_user', 'pi')
         port = str(self.config.get('pi_port', 22))
 
-        script = """python3 - <<'PY'
-import subprocess, json, re
+        raw = None
+        if is_local_host(host):
+            try:
+                local_cmd = [sys.executable or 'python3', '-c', SYSTEM_DETAILS_CODE]
+                raw = host_check_output(local_cmd, stderr=subprocess.DEVNULL, timeout=5.0, text=True)
+            except Exception:
+                raw = None
 
-def out(c):
-    try:
-        return subprocess.check_output(c, shell=True, text=True, stderr=subprocess.DEVNULL).strip()
-    except Exception:
-        return ''
+        if raw is None:
+            ssh_cmd = [
+                'ssh', '-p', port,
+                '-o', 'BatchMode=yes',
+                '-o', 'ConnectTimeout=3',
+                f"{user}@{host}",
+                f"python3 - <<'PY'\n{SYSTEM_DETAILS_CODE}\nPY"
+            ]
+            try:
+                raw = host_check_output(ssh_cmd, stderr=subprocess.DEVNULL, timeout=6.0, text=True)
+            except Exception:
+                if sys.platform.startswith('linux') and (os.path.exists('/sys/class/thermal/thermal_zone0') or os.path.exists('/proc/device-tree/model')):
+                    try:
+                        local_cmd = [sys.executable or 'python3', '-c', SYSTEM_DETAILS_CODE]
+                        raw = host_check_output(local_cmd, stderr=subprocess.DEVNULL, timeout=5.0, text=True)
+                    except Exception:
+                        raw = None
 
-cpu_info = out('cat /proc/cpuinfo')
-rev_m = re.search(r'Revision\\s+:\\s+(\\S+)', cpu_info)
-ser_m = re.search(r'Serial\\s+:\\s+(\\S+)', cpu_info)
-
-eth_mac = out('cat /sys/class/net/eth0/address')
-wlan_mac = out('cat /sys/class/net/wlan0/address')
-eth_ip = out("ip -4 -br addr show eth0 | awk '{print $3}'")
-wlan_ip = out("ip -4 -br addr show wlan0 | awk '{print $3}'")
-
-details = {
-    'hardware': {
-        'model': out('cat /proc/device-tree/model').rstrip('\\x00'),
-        'revision': rev_m.group(1) if rev_m else 'd04170',
-        'serial': ser_m.group(1) if ser_m else 'Unknown',
-        'soc': 'Broadcom BCM2712',
-        'cpu_arch': 'aarch64 (ARMv8.2-A 64-bit)',
-        'cpu_cores': 4,
-        'cpu_name': 'ARM Cortex-A76',
-        'cpu_max_freq': '2.4 GHz (2400 MHz)',
-        'cpu_min_freq': '1.5 GHz (1500 MHz)',
-        'ram_total': '8.0 GB LPDDR4X-4267',
-        'ram_details': '8453 MB physical SDRAM',
-        'southbridge': 'Raspberry Pi RP1 I/O Controller (PCIe 2.0 x4)',
-        'power_ic': 'Dialog DA9091 PMIC',
-        'core_voltage': out('vcgencmd measure_volts core').replace('volt=', ''),
-        'arm_clock': out('vcgencmd measure_clock arm').split('=')[-1] + ' Hz',
-        'core_clock': out('vcgencmd measure_clock core').split('=')[-1] + ' Hz',
-        'rp1_temp_c': round(float(out('cat /sys/class/hwmon/hwmon1/temp1_input 2>/dev/null') or 0)/1000.0, 1) if out('cat /sys/class/hwmon/hwmon1/temp1_input 2>/dev/null') else None
-    },
-    'firmware': {
-        'bootloader_version': out('vcgencmd bootloader_version'),
-        'vcgencmd_version': out('vcgencmd version'),
-        'config_txt': out('cat /boot/firmware/config.txt | grep -v "^#" | grep -v "^$" | head -n 14')
-    },
-    'os': {
-        'distro': out("cat /etc/os-release | grep PRETTY_NAME | cut -d'=' -f2").strip('"'),
-        'kernel': out('uname -r'),
-        'kernel_full': out('uname -a'),
-        'uptime_full': out('uptime'),
-        'python_version': out('python3 -V'),
-        'gcc_version': out('gcc --version | head -n 1'),
-        'systemd_version': out('systemctl --version | head -n 1')
-    },
-    'network': {
-        'hostname': out('hostname -f 2>/dev/null || hostname'),
-        'interfaces': {
-            'eth0': {
-                'name': 'Gigabit Ethernet',
-                'state': 'UP' if 'UP' in out('ip link show eth0') else 'DOWN',
-                'mac': eth_mac,
-                'ipv4': eth_ip or 'None',
-                'ipv6': out("ip -6 -br addr show eth0 | awk '{print $3}'"),
-                'speed': (out('cat /sys/class/net/eth0/speed 2>/dev/null') or '--') + ' Mbps'
-            },
-            'wlan0': {
-                'name': 'Dual-band Wi-Fi 5 (802.11ac)',
-                'state': 'UP' if 'UP' in out('ip link show wlan0') else 'DOWN',
-                'mac': wlan_mac,
-                'ipv4': wlan_ip or 'Disconnected'
-            }
-        },
-        'default_gateway': out("ip route | grep default | awk '{print $3}'"),
-        'dns_servers': out("grep nameserver /etc/resolv.conf | awk '{print $2}'").split()
-    },
-    'storage': {
-        'block_devices': out('lsblk -o NAME,SIZE,FSTYPE,TYPE,MOUNTPOINT'),
-        'sd_card_model': out('cat /sys/block/mmcblk0/device/name'),
-        'sd_card_manfid': out('cat /sys/block/mmcblk0/device/manfid'),
-        'sd_card_date': out('cat /sys/block/mmcblk0/device/date'),
-        'sd_card_capacity': out('cat /sys/block/mmcblk0/size')
-    },
-    'buses': {
-        'pci_devices': [l for l in out('lspci').splitlines() if l.strip()],
-        'usb_devices': [l for l in out('lsusb').splitlines() if l.strip()]
-    }
-}
-print(json.dumps(details))
-PY
-"""
-        ssh_cmd = [
-            'ssh', '-p', port,
-            '-o', 'BatchMode=yes',
-            '-o', 'ConnectTimeout=3',
-            f"{user}@{host}",
-            script
-        ]
-        try:
-            raw = host_check_output(ssh_cmd, stderr=subprocess.DEVNULL, timeout=6.0, text=True)
+        if raw:
             for line in raw.strip().splitlines():
                 line = line.strip()
                 if line.startswith('{') and line.endswith('}'):
-                    self.system_details = json.loads(line)
-                    return self.system_details
-        except Exception as e:
-            pass
+                    try:
+                        self.system_details = json.loads(line)
+                        return self.system_details
+                    except Exception:
+                        pass
         return self.system_details or {}
 
     def parse_metrics(self, raw_data, duration_ms):
         now = time.time()
+        local_model = "Raspberry Pi 5"
+        if os.path.exists('/proc/device-tree/model'):
+            try:
+                with open('/proc/device-tree/model', 'r') as f:
+                    local_model = f.read().strip('\x00\n')
+            except Exception:
+                pass
+        curr_host = self.config.get("pi_host", "raspberrypi")
+        try:
+            if is_local_host(curr_host):
+                curr_host = socket.gethostname()
+        except Exception:
+            pass
         res = {
             "online": True,
             "last_updated": now,
             "latency_ms": round(duration_ms, 1),
-            "hostname": "hermes-pi",
-            "model": "Raspberry Pi 5 (8GB)",
+            "hostname": curr_host,
+            "model": local_model,
             "cpu": {
                 "load_1m": 0.0,
                 "load_5m": 0.0,
@@ -303,14 +369,28 @@ PY
         }
 
         # 1. Temperature
-        m_temp = re.search(r'temp=([\d\.]+)', raw_data.get('temp', ''))
+        raw_temp = str(raw_data.get('temp', '')).strip()
+        m_temp = re.search(r'temp=([\d\.]+)', raw_temp)
         if m_temp:
             res['cpu']['temp_c'] = round(float(m_temp.group(1)), 1)
+        else:
+            m_milli = re.search(r'(\d{4,6})', raw_temp)
+            if m_milli:
+                res['cpu']['temp_c'] = round(float(m_milli.group(1)) / 1000.0, 1)
+            else:
+                m_plain = re.search(r'(\d+\.\d+)', raw_temp)
+                if m_plain:
+                    res['cpu']['temp_c'] = round(float(m_plain.group(1)), 1)
 
         # 2. Clock Speed
-        m_clock = re.search(r'frequency\(\d+\)=(\d+)', raw_data.get('clock', ''))
+        raw_clock = str(raw_data.get('clock', '')).strip()
+        m_clock = re.search(r'frequency\(\d+\)=(\d+)', raw_clock)
         if m_clock:
             res['cpu']['clock_mhz'] = round(int(m_clock.group(1)) / 1_000_000)
+        else:
+            m_khz = re.search(r'(\d{6,8})', raw_clock)
+            if m_khz:
+                res['cpu']['clock_mhz'] = round(int(m_khz.group(1)) / 1000)
 
         # 3. Throttled
         m_thr = re.search(r'throttled=(0x[0-9a-fA-F]+)', raw_data.get('throttled', ''))
@@ -459,12 +539,11 @@ PY
         user = self.config.get('pi_user', 'pi')
         port = str(self.config.get('pi_port', 22))
 
-        remote_script = (
-            "python3 -c \""
+        telemetry_code = (
             "import subprocess, json, os;"
             "print(json.dumps({"
-            "'temp': subprocess.getoutput('vcgencmd measure_temp 2>/dev/null || cat /sys/class/thermal/thermal_zone0/temp'),"
-            "'clock': subprocess.getoutput('vcgencmd measure_clock arm 2>/dev/null'),"
+            "'temp': subprocess.getoutput('vcgencmd measure_temp 2>/dev/null || cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null'),"
+            "'clock': subprocess.getoutput('vcgencmd measure_clock arm 2>/dev/null || cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null'),"
             "'throttled': subprocess.getoutput('vcgencmd get_throttled 2>/dev/null'),"
             "'loadavg': subprocess.getoutput('cat /proc/loadavg'),"
             "'mem': subprocess.getoutput('free -b'),"
@@ -473,24 +552,46 @@ PY
             "'uname': subprocess.getoutput('uname -a'),"
             "'top_proc': subprocess.getoutput('ps -eo pid,user,%cpu,%mem,comm --sort=-%cpu | head -n 8'),"
             "'net_dev': subprocess.getoutput('cat /proc/net/dev')"
-            "}))\""
+            "}))"
         )
 
-        ssh_cmd = [
-            'ssh',
-            '-p', port,
-            '-o', 'BatchMode=yes',
-            '-o', 'ConnectTimeout=2',
-            f"{user}@{host}",
-            remote_script
-        ]
+        out = None
+        duration_ms = 0.0
 
-        t0 = time.time()
-        try:
-            out = host_check_output(ssh_cmd, stderr=subprocess.DEVNULL, timeout=4.0, text=True)
-            duration_ms = (time.time() - t0) * 1000
-            
-            # Find the JSON part in out (strip any banner like 'Please note that SSH...')
+        if is_local_host(host):
+            t0 = time.time()
+            try:
+                local_cmd = [sys.executable or 'python3', '-c', telemetry_code]
+                out = host_check_output(local_cmd, stderr=subprocess.DEVNULL, timeout=3.0, text=True)
+                duration_ms = (time.time() - t0) * 1000
+            except Exception:
+                out = None
+
+        if out is None:
+            remote_script = f'python3 -c "{telemetry_code}"'
+            ssh_cmd = [
+                'ssh',
+                '-p', port,
+                '-o', 'BatchMode=yes',
+                '-o', 'ConnectTimeout=2',
+                f"{user}@{host}",
+                remote_script
+            ]
+            t0 = time.time()
+            try:
+                out = host_check_output(ssh_cmd, stderr=subprocess.DEVNULL, timeout=4.0, text=True)
+                duration_ms = (time.time() - t0) * 1000
+            except Exception:
+                if sys.platform.startswith('linux') and (os.path.exists('/sys/class/thermal/thermal_zone0') or os.path.exists('/proc/device-tree/model')):
+                    try:
+                        t0 = time.time()
+                        local_cmd = [sys.executable or 'python3', '-c', telemetry_code]
+                        out = host_check_output(local_cmd, stderr=subprocess.DEVNULL, timeout=3.0, text=True)
+                        duration_ms = (time.time() - t0) * 1000
+                    except Exception:
+                        out = None
+
+        if out:
             json_str = None
             for line in out.strip().splitlines():
                 line = line.strip()
@@ -499,30 +600,32 @@ PY
                     break
             
             if not json_str:
-                # Find between first { and last }
                 start = out.find('{')
                 end = out.rfind('}')
                 if start != -1 and end != -1 and end > start:
                     json_str = out[start:end+1]
 
             if json_str:
-                raw_data = json.loads(json_str)
-                metrics = self.parse_metrics(raw_data, duration_ms)
-                with self.lock:
-                    self.latest_metrics = metrics
-                    self.history.append({
-                        "timestamp": round(metrics["last_updated"], 1),
-                        "load_1m": metrics["cpu"]["load_1m"],
-                        "temp_c": metrics["cpu"]["temp_c"],
-                        "mem_percent": metrics["memory"]["percent"],
-                        "rx_kbps": metrics["network"]["rx_rate_kbps"],
-                        "tx_kbps": metrics["network"]["tx_rate_kbps"]
-                    })
-                return metrics
-        except Exception as e:
-            with self.lock:
-                self.latest_metrics["online"] = False
-                self.latest_metrics["latency_ms"] = 0
+                try:
+                    raw_data = json.loads(json_str)
+                    metrics = self.parse_metrics(raw_data, duration_ms)
+                    with self.lock:
+                        self.latest_metrics = metrics
+                        self.history.append({
+                            "timestamp": round(metrics["last_updated"], 1),
+                            "load_1m": metrics["cpu"]["load_1m"],
+                            "temp_c": metrics["cpu"]["temp_c"],
+                            "mem_percent": metrics["memory"]["percent"],
+                            "rx_kbps": metrics["network"]["rx_rate_kbps"],
+                            "tx_kbps": metrics["network"]["tx_rate_kbps"]
+                        })
+                    return metrics
+                except Exception:
+                    pass
+
+        with self.lock:
+            self.latest_metrics["online"] = False
+            self.latest_metrics["latency_ms"] = 0
         return self.latest_metrics
 
     def worker_loop(self):
@@ -539,6 +642,7 @@ PY
                 "config": {
                     "pi_host": self.config.get("pi_host"),
                     "pi_user": self.config.get("pi_user"),
+                    "pi_port": self.config.get("pi_port", 22),
                     "poll_interval_sec": self.config.get("poll_interval_sec")
                 }
             }
@@ -665,8 +769,24 @@ class MetricsRequestHandler(SimpleHTTPRequestHandler):
                     self.send_json_response({"ok": False, "error": "Host or IP address cannot be empty"}, status=400)
                     return
 
-                # 1. Quick TCP socket test
                 t0 = time.time()
+                # 0. Quick local check if test_host is local and running on Linux / Pi
+                if is_local_host(test_host) and (os.path.exists('/proc/device-tree/model') or sys.platform.startswith('linux')):
+                    try:
+                        out = host_check_output("cat /proc/device-tree/model 2>/dev/null || uname -m", shell=True, timeout=2.0, text=True)
+                        model_str = out.strip().replace('\x00', '') or "Raspberry Pi (Local)"
+                        latency_ms = round((time.time() - t0) * 1000, 1)
+                        self.send_json_response({
+                            "ok": True,
+                            "host": test_host,
+                            "latency_ms": latency_ms,
+                            "model": model_str
+                        })
+                        return
+                    except Exception:
+                        pass
+
+                # 1. Quick TCP socket test
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.settimeout(2.5)
                 try:
