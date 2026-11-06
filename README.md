@@ -23,8 +23,6 @@ Connects passwordlessly over SSH to `pi@192.168.1.9` (`hermes-pi`), collects gra
 
 ## Quick Start
 
-## Quick Start
-
 ### 1. Launch Linux Desktop App
 - **From Desktop**: Double-click the **Pi Metrics** icon on your desktop.
 - **From App Launcher**: Search for **Pi Metrics** in GNOME / Super key menu.
